@@ -1,19 +1,19 @@
-//import { CustomObjectPagedQueryResponse } from '@commercetools/platform-sdk';
 import { createApiRoot } from '../client/create.client';
 import { logger } from '../utils/logger.utils';
-//import { getAll } from './modifier.customObjects';
-//import { GetFunction } from '../types/index.types';
 
-export const getCustomObjects = async (sku: string) => {
-  logger.info('Fetching Custom Object price-history/', sku);
+export const getAllCustomObjects = async () => {
+  logger.info('Fetching All Custom Object price-history/');
   try {
     const { body } = await createApiRoot()
       .customObjects()
-      .withContainerAndKey({
+      .withContainer({
         container: 'price-history',
-        key: sku,
       })
-      .get()
+      .get({
+        queryArgs: {
+          limit: 500,
+        },
+      })
       .execute();
 
     return body;

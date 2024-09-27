@@ -1,110 +1,62 @@
 import { Request, Response } from 'express';
+
 import CustomError from '../errors/custom.error';
 import { logger } from '../utils/logger.utils';
 import { allProducts } from '../products/fetch.productProjections';
-import { getCustomObjects } from '../customObjects/fetch.customObjects';
-import { postCustomObject } from '../customObjects/post.customObjects';
+import { getAllCustomObjects } from '../customObjects/fetch.customObjects';
+import { deleteCustomObjects } from '../customObjects/post.customObjects';
 
-interface PriceValue {
-  type: string;
-  currencyCode: string;
-  centAmount: number;
-  fractionDigits: number;
-}
-
-interface PriceData {
-  id: string;
-  value: PriceValue;
-  key?: string;
-  country?: string;
-}
-
-interface Prices {
-  [country: string]: {
-    data: PriceData[];
-  };
-}
-
-interface Result {
-  sku?: string;
-  labels: string[];
-  prices: Prices;
-}
-
+/**
+ * Exposed job endpoint.
+ *
+ * @param {Request} _request The express request
+ * @param {Response} response The express response
+ * @returns
+ */
 export const post = async (_request: Request, response: Response) => {
   try {
+    // Get the Products
     const products = await allProducts({});
-    const date = new Date().toISOString().split('T')[0];
+    const allPrices = await getAllCustomObjects();
 
-    const results: Result[] = await Promise.all(
-      products.results.flatMap((product) => {
-        const variants = [product.masterVariant, ...product.variants];
-        return variants.map(async (variant) => {
-          if (!variant.sku) {
-            return { sku: '', labels: [], prices: {} };
-          }
-          const priceHistory = await getCustomObjects(variant.sku);
+    const allSkus = products.results.reduce((acc, product) => {
+      if (product.masterVariant.sku) {
+        acc.push(product.masterVariant.sku);
+      }
+      acc.push(
+        ...product.variants
+          .map((variant) => variant.sku)
+          .filter((sku): sku is string => sku !== undefined)
+      );
+      return acc;
+    }, [] as string[]);
 
-          if (!priceHistory) {
-            //logger.info('Custom Object not found', { sku: variant.sku });
-            const prices: Prices = {};
-            variant.prices?.forEach((price) => {
-              if (price.country) {
-                if (!prices[price.country]) {
-                  prices[price.country] = { data: [] };
-                }
-                prices[price.country].data.push({
-                  id: price.id,
-                  value: price.value,
-                  key: price.key,
-                  country: price.country,
-                });
-              }
-            });
-            return { sku: variant.sku, labels: [date], prices };
-          } else {
-            //logger.info('Custom Object found', { priceHistory });
-            const labels = [...priceHistory.value.labels, date];
-            const prices = { ...priceHistory.value.prices };
-            variant.prices?.forEach((price) => {
-              if (price.country) {
-                if (!prices[price.country]) {
-                  prices[price.country] = { data: [] };
-                }
-                prices[price.country].data.push({
-                  id: price.id,
-                  value: price.value,
-                  key: price.key,
-                  country: price.country,
-                });
-              }
-            });
-            return {
-              sku: variant.sku,
-              labels: labels,
-              prices: prices,
-            };
-          }
-        });
-      })
+    const allKeys = allPrices?.results.reduce((acc, price) => {
+      if (price.key) {
+        acc.push(price.key);
+      }
+      return acc;
+    }, [] as string[]);
+
+    const missingSkus = allKeys?.filter(
+      (sku) => sku && !allSkus?.includes(sku)
     );
 
-    results.forEach(async (result) => {
-      /** 
-       Uncomment this block to delete the custom objects (also add the import statement at the top)
-      if (result.sku) {
-        await deleteCustomObjects(result.sku);
-      }
-     */
-      await postCustomObject(result);
-    });
-
-    response.status(200).send();
+    if (!missingSkus || missingSkus.length === 0) {
+      logger.info('No price history to be cleaned up.');
+    } else {
+      logger.info('Cleaning up price history for missing skus', {
+        missingSkus,
+      });
+      missingSkus?.forEach(async (sku) => {
+        await deleteCustomObjects(sku);
+      });
+    }
+    response.status(200).json({ missingSkus });
   } catch (error) {
-    logger.info('Error', { error });
     throw new CustomError(
       500,
-      `Internal Server Error - Error Updating price history`
+      `Internal Server Error - Error retrieving all orders from the commercetools SDK`
     );
   }
 };
