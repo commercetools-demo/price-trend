@@ -34,7 +34,9 @@ interface Result {
 const processVariant = async (variant: any, date: string): Promise<Result> => {
   if (!variant.sku) return { sku: '', labels: [], prices: {} };
 
-  const priceHistory = await getCustomObjects(variant.sku);
+  const sanitizedSku = variant.sku.replace(/\s+/g, '-');
+
+  const priceHistory = await getCustomObjects(sanitizedSku);
   const prices: Prices = {};
 
   variant.prices?.forEach((price: PriceData) => {
@@ -50,7 +52,7 @@ const processVariant = async (variant: any, date: string): Promise<Result> => {
   });
 
   if (!priceHistory) {
-    return { sku: variant.sku, labels: [date], prices };
+    return { sku: sanitizedSku, labels: [date], prices };
   }
 
   const existingDateIndex = priceHistory.value.labels.indexOf(date);
@@ -65,7 +67,7 @@ const processVariant = async (variant: any, date: string): Promise<Result> => {
           priceHistory.value.prices[price.country].data[existingDateIndex];
         if (price.value.centAmount < historicalPrice.value.centAmount) {
           logger.info('smaller', {
-            sku: variant.sku,
+            sku: sanitizedSku,
             country: price.country,
             date,
           });
@@ -78,7 +80,7 @@ const processVariant = async (variant: any, date: string): Promise<Result> => {
           };
         } else if (price.value.centAmount > historicalPrice.value.centAmount) {
           logger.info('bigger - not updating it', {
-            sku: variant.sku,
+            sku: sanitizedSku,
             country: price.country,
             date,
           });
@@ -91,7 +93,7 @@ const processVariant = async (variant: any, date: string): Promise<Result> => {
   }
 
   labels.push(date);
-  return { sku: variant.sku, labels, prices };
+  return { sku: sanitizedSku, labels, prices };
 };
 
 export const post = async (_request: Request, response: Response) => {

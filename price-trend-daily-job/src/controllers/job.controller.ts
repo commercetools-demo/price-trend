@@ -21,11 +21,11 @@ export const post = async (_request: Request, response: Response) => {
 
     const allSkus = products.results.reduce((acc, product) => {
       if (product.masterVariant.sku) {
-        acc.push(product.masterVariant.sku);
+        acc.push(product.masterVariant.sku.replace(/\s+/g, '-'));
       }
       acc.push(
         ...product.variants
-          .map((variant) => variant.sku)
+          .map((variant) => variant?.sku?.replace(/\s+/g, '-'))
           .filter((sku): sku is string => sku !== undefined)
       );
       return acc;
