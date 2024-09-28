@@ -25,7 +25,8 @@ export const postCustomObject = async (value: any, sku?: string) => {
   }
 };
 
-export const deleteCustomObjects = async (sku: string) => {
+export const deleteCustomObjects = async (sku: any) => {
+  logger.info('Deleting Custom Object price-history/', sku);
   try {
     const { body } = await createApiRoot()
       .customObjects()

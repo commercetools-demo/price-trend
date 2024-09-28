@@ -32,13 +32,11 @@ interface Result {
 }
 
 const processVariant = async (variant: any, date: string): Promise<Result> => {
-  if (!variant.sku) return { sku: '', labels: [], prices: {} };
-
   const sanitizedSku = variant.sku.replace(/\s+/g, '-');
 
   const priceHistory = await getCustomObjects(sanitizedSku);
-  const prices: Prices = {};
 
+  const prices: Prices = {};
   variant.prices?.forEach((price: PriceData) => {
     if (price.country) {
       if (!prices[price.country]) prices[price.country] = { data: [] };
@@ -56,11 +54,21 @@ const processVariant = async (variant: any, date: string): Promise<Result> => {
   }
 
   const existingDateIndex = priceHistory.value.labels.indexOf(date);
-  let labels = [...priceHistory.value.labels];
-  let changeIndicator = false;
+
+  if (existingDateIndex === -1) {
+    priceHistory.value.labels.push(date);
+    Object.keys(prices).forEach((country) => {
+      if (!priceHistory.value.prices[country]) {
+        priceHistory.value.prices[country] = { data: [] };
+      }
+      priceHistory.value.prices[country].data.push(...prices[country].data);
+    });
+    await Promise.resolve(postCustomObject(priceHistory.value, variant.sku));
+    return { sku: '', labels: [], prices: {} };
+  }
 
   if (existingDateIndex !== -1) {
-    labels = priceHistory.value.labels;
+    let changeIndicator = false;
     variant.prices?.forEach((price: PriceData) => {
       if (price.country && priceHistory.value.prices[price.country]) {
         const historicalPrice =
@@ -88,19 +96,16 @@ const processVariant = async (variant: any, date: string): Promise<Result> => {
       }
     });
     if (changeIndicator)
-      await postCustomObject(priceHistory.value, variant.sku);
+      await Promise.resolve(postCustomObject(priceHistory.value, variant.sku));
     return { sku: '', labels: [], prices: {} };
   }
-
-  labels.push(date);
-  return { sku: sanitizedSku, labels, prices };
+  return { sku: '', labels: [], prices: {} };
 };
 
 export const post = async (_request: Request, response: Response) => {
   try {
     const products = await allProducts({});
     const date = new Date().toISOString().split('T')[0];
-
     const results: Result[] = await Promise.all(
       products.results.flatMap((product) =>
         [product.masterVariant, ...product.variants].map((variant) =>
